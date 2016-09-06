@@ -5,7 +5,7 @@
 #' bibliography: WWC.bib
 #' link-citations: yes
 #' ---
-#+ setup, include=FALSE eval=FALSE
+#+ setup, include=FALSE, eval=FALSE
 devtools::install_github('gmonette/WWCa')
 install.packages('magrittr')  # to use the '%>%' pipe imported from magrittr to dplyr
 #' 
@@ -33,7 +33,7 @@ install.packages('magrittr')  # to use the '%>%' pipe imported from magrittr to 
 #' 
 #' # The 'tab' and 'tab_df' functions
 #'        
-library(surveygmds)
+library(WWCa)
 library(magrittr)
 library(lattice)
 library(latticeExtra)
@@ -311,6 +311,11 @@ sample_parms$pr <- c(4,2,1,1,1,.5,.5,1,1,1,3,4)/5  # probability of a YES
 sample_parms
 pop_sample_parms <- merge(sample_parms, target_pop)
 pop_sample_parms  %>% info
+
+#'
+knitr::knit_exit()
+#'
+
 
 N <- 1000
 
