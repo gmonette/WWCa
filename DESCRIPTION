@@ -1,0 +1,13 @@
+Package: WWCa
+Type: Package
+Title: Tools for poststratification
+Version: 0.1.1
+Date: 2016-08-22
+Author: Georges Monette
+Maintainer: Georges Monette <georges+surveygmds@yorku.ca>
+Description: Collection of tools and utility functions poststratification
+    including a selection of tools from the gmonette/spida2 package
+    on github.
+License: GPL-3
+LazyData: TRUE
+RoxygenNote: 5.0.1
