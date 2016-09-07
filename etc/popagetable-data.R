@@ -1,13 +1,14 @@
 # Creating popagetable from acsagetable
 # 
 library(WWC)
+library(magrittr)
 head(acsagetable)
 zz <- acsagetable
 zz$region.type <- with(zz,
                        ifelse(region=="US", 'country', 
                               ifelse(grepl("^[0-9]",region),"county","state")) )
 #  create a relation for state codes and state names
-library(surveygmds)
+library(WWCa)
 dcounty <- subset(zz, region.type == 'county')
 dcounty$state.code <- sub("...$",'',dcounty$region)
 head(dcounty)
@@ -70,6 +71,10 @@ tab(popagetable, ~ state.code + sign(population), pct = 1)  %>% round(1)
 # substitute 0 for negative values for population
 popagetable$population_neg <- popagetable$population
 popagetable$population <- pmax(popagetable$population, 0)
+
+# date at which frequencies are valid
+
+popagetable$date <- NA
 
 save(popagetable, file = 'data/popagetable.rda')
 popagetable %>% head
