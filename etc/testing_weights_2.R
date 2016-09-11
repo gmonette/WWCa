@@ -1,58 +1,96 @@
 #' ---
 #' title: "Weighting for online surveys"
 #' date: "`r Sys.Date()`"
-#' output: html_document
+#' output: 
+#'  html_document:
+#'    toc: true
+#'    toc_depth: 4
+#'    toc_float: true
+#'    keep_md: yes
 #' bibliography: WWC.bib
 #' link-citations: yes
 #' ---
 #+ setup, include=FALSE, eval=FALSE
 devtools::install_github('gmonette/WWCa')
 install.packages('magrittr')  # to use the '%>%' pipe imported from magrittr to dplyr
+#+ load, include=FALSE
+library(WWCa)
+library(magrittr) # the original package for the '%>%' pipe
+library(lattice)
+library(latticeExtra)
+library(knitr)
+opts_chunk$set(comment=NA)
 #' 
 #' # Introduction
 #' 
-#' This document illustrates the use of a few tools that might make it easy to analyze and weight
+#' This document illustrates the use of a few tools in a R package called [WWCa](https://github.com/gmonette/WWCa)
+#' that might be useful to analyze and weight
 #' online surveys.
 #' 
-#' The WWCa package includes two data frames with frequencies 
-#' XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX 
-#' from the data frames acsagetable and acsedutable in the WWC package.
+#' Currently, the package contains:
 #' 
+#' 1. Two 'population' data frames with census counts by county for the U.S. and Puerto Rico. One data frame has
+#'    counts for age, sex and raceethnicity by county and the second (to come) has counts for age,
+#'    sex and education by county. Q: Is is possible to get a sex by age by education by raceethnicity 
+#'    data frame? These data frames were constructed from the 'acsagetable' and 'acsedutable' 
+#'    data frames in the [WWC package](https://github.com/heathermkrause/WWC).
+#' 1. A function 'sam' to create simulated samples from the population data frames. The function 
+#'    accepts a sampling factor to allow over- or undersampling in arbitrary strata. Currently, the 
+#'    response is binary and the probability of a 'yes' can also be specified in any strata.   
+#' 2. A number of data manipulation utilities adapted from the 
+#'    [spida2 package](https://github.com/gmonette/spida2).
+#'    The main functions are 'tab' and 'tab_df' to create marginal frequency and population counts. 
+#'    Other functions include 'capply', a function in the 'apply' family that allows function to
+#'    operate within strata. 
+#' 3. Functions for weighting and calculating weighted and unweighted estimates of population parameters.
+#' 
+#' The structure of the functions should make it easy to add additional weight fitting methods and 
+#' to identify nested hierarchies of subpopulations for which a sample can provide estimates with
+#' different levels of reliability.
+#' 
+#' ## Overview of functions
+#'
 #' The main tools are 'tab' and 'tab_df' to create tables and data frames with frequencies by strata
-#' for survey data and population frequency tables. 
+#' for survey data and population count tables. 
 #' 
-#' The 'wts' function takes
+#' The basis of survey weights are population sample counts within strata and their ratio, 
+#' the Horvitz-Thompson weights.  The 'wts' function computes these quantities, taking as
+#' arguments:
 #'  
 #' 1. two data frames, one with survey results and one with population frequencies, 
-#' 2. a stratification formula to identify stratification variables, and 
-#' 3. a list of CONDITIONING EXPRESSION to compute various types of weights
+#' 2. a stratification formula to identify stratification variables.
 #' 
-#' to form population mean estimates and standard errors adjusted for the stratification 
-#' variables to estimate
-#' population parameter in the target population defined by the CONDITIONING EXPRESSIONS.
+#' The 'wtd_mean' function estimates a weighted mean and a companion function 'jk_wtd_mean_se' estimates
+#' a jacknife estimate of its standard error.  The functions 'lin_comb' and 'jk_lin_comb_se' provide
+#' corresponding estimates for linear combinations. 
 #' 
-#' # The 'tab' and 'tab_df' functions
-#'        
-library(WWCa)
-library(magrittr)
-library(lattice)
-library(latticeExtra)
-
-#' A flexible method to look at data frames
+#' ## In progress
+#' 
+#' Methods to calculate and apply survey weights are being extended so they can include raking and generalized 
+#' regression.  
+#' 
+#' Different weights will allow the identification of different hierarchies of sub-populations for which
+#' the sample estimates have greater or lesser degree of reliability.   
+#' 
+#' # Exploring tools
+#' 
+#' Define a flexible method to look at data frames
+#' 
 info <- function(x, ...) UseMethod('info')
-info.data.frame <- function(x, n = 6, ...) {  
+info.data.frame <- function(x, n = 6, verbose = F, ...) {  
   cat("Dim: ",dim(x),"\n")
   if(nrow(x) <= n) print(x)
   else print(x[sample(nrow(x), n),])
+  if(verbose) print(sapply(x,class))
   invisible(x)
 }
 info.default <- function(x,...) {
   cat("Not implemented for ", class(x),"\n")
   invisible(x)
 }
-
+info_ <- function(x,...) info(x, ..., verbose = TRUE)
 #'
-#' # Computing population counts with 'tab' and 'tab_df'
+#' ## Computing population and sample counts
 #' 
 #' To weight a survey we need to specify the target population -- for example, 
 #' the population of a specific state, the voting age population of a given subsets
@@ -88,17 +126,20 @@ info.default <- function(x,...) {
 #' 
 #' 
 popagetable %>% info
-
-popagetable %>% tab(~age + sex)    # number of rows in each stratum
-popagetable %>% tab(population ~ age + sex)    # sum of population
-popagetable %>% tab(population ~ age + sex, pct = 1)   %>% round(1)  # row percentages
-popagetable %>% tab(population ~ age + sex, pct = 2)   %>% round(1)  # column percentages
-
-popagetable %>% tab_df(population ~age + sex)    # as a data frame
-popagetable %>% tab_df(population ~age + sex, pct = 1)    # as a data frame
-
+#' Number of rows in each stratume
+popagetable %>% tab(~age + sex)   
+#' Population in each stratum
+popagetable %>% tab(population ~ age + sex)   
+#' Row percentages
+popagetable %>% tab(population ~ age + sex, pct = 1)   %>% round(1)  
+#' Column percentages
+popagetable %>% tab(population ~ age + sex, pct = 2)   %>% round(1)  
+#' As a data frame
+popagetable %>% tab_df(population ~age + sex)    
+#' Data frame with percentages: note that 'All' is included but not 'Total'
+popagetable %>% tab_df(population ~age + sex, pct = 1)   
 #' 
-#' ### Negative and zero population values
+#' ## Negative and zero population values
 #' 
 #' Overall, about 1% of rows (strata x county combinations) have 
 #' negative population values and 30% have zero values. 
@@ -114,16 +155,17 @@ popagetable %>%
   subset(population_neg < 10)
 
 #'
-#' Focusing on Alaska
+#' Focusing on California
 #' 
-popagetable %>% subset(state == "AK")  %>% tab(population ~ age + sex)
-popagetable %>% subset(state == "AK")  %>% tab(population ~ age + sex, pct = 1) %>% round(2)
-popagetable %>% subset(state == "AK")  %>% tab(population ~ age + sex, pct = 2) %>% round(2)
-popagetable %>% subset(state == "AK")  %>% tab(population ~ age + sex, pct = 0) %>% round(2)
-popagetable %>% subset(state == "AK")  %>% tab_df(population ~ age + sex)    # as a data frame
-
-#' Female adults in NY and PA below 85 years of age
-
+popagetable %>% subset(state == "CA")  %>% tab(population ~ age + sex)
+popagetable %>% subset(state == "CA")  %>% tab(population ~ age + sex, pct = 1) %>% round(2)
+popagetable %>% subset(state == "CA")  %>% tab(population ~ age + sex, pct = 2) %>% round(2)
+popagetable %>% subset(state == "CA")  %>% tab(population ~ age + sex, pct = 0) %>% round(2)
+popagetable %>% subset(state == "CA")  %>% tab_df(population ~ age + sex)    # as a data frame
+#'
+#' Selecting a subset: female adults in NY and PA below 85 years of age. Note that age is an ordered
+#' factor.
+#'
 targetdf <- popagetable %>% 
   subset(state %in% c('NY','PA') & 
            sex == "Female" &
@@ -131,90 +173,263 @@ targetdf <- popagetable %>%
            age < "85 years and over") %>% 
   tab_df(population ~ age + sex + state)
 targetdf
-
 #'
-#' # Create a sample
+#' # Creating a sample
 #'
-#' We will create a sample of adults in AK and illustrate the use of functions in the package to
-#' obtain various kinds of weighted estimates and estimated standard errors.
+#' Imagine that we are interested in making inferences about adults in AK using an online tool targeted
+#' at them but inevitably contaminated by respondents that are out of scope.
 #' 
-#' We will suppose that the response depends on age and sex but not on raceethnicity and
-#' we will consider the consequences of adjusting for various combinations of the 
+#' Here, we create a sample using basic tools with the intention of packaging the method in a function.
+#' 
+#' To control the extent of over- and under-sampling, we generate a vector 'fac' to determine
+#' relative sampling from each stratum. 
+#' 
+#' Here, we create a sample consisting mainly of adults in AK contaminated by other respondents. Later we
+#' consider estimates and standard error estimates for various target populations. 
+#' 
+#' We suppose that the response variable has two values, 'yes' or 'no', and that the 
+#' probability of a 'yes' depends on age and sex but not on raceethnicity. The probability of 
+#' a 'yes' will be contained in a vector 'pr'.
+#' 
+#' We consider the consequences of adjusting for various combinations of the 
 #' three variables.
 #' 
-#' Step 1: Select target population from 'popagetable' 
+#' The questionnaire will solicit information on raceethnicity, sex, age and state but not on county.
 #' 
-target_pop <- subset(popagetable, state == 'AK' & age > "18 and 19 years" & age < '65 to 74 years')
-target_pop %>% dim
-target_pop %>% head
-target_pop %>% tab(population ~ age + sex)
-target_pop %>% tab(population ~ age + sex, pct = 2)  %>% round(1)
-target_pop <- droplevels(target_pop) # remove empty levels from factors
-#'
-#' Step 2: Sample parameters: 
+#' ## Step 1: Create a population data frame, aggregated over counties, with sampling parameters  
 #' 
-#' 1. choose 'sampling factors': relative degree of over or undersampling in different strata and 
-#' 2. parameters for the response distribution in different strata
+#' Aggregate to state level:
+#' 
+pop_agg <- popagetable %>% tab_df(population ~ sex + age + raceethnicity + state)
+pop_agg %>% info
+pop_agg %>% summary
+
+#' Select main group targeted and assign values for sampling parameters
+
+sample_parms <- subset(pop_agg, state == 'CA' & age > "18 and 19 years" & age < '65 to 74 years') %>% 
+  tab_df(~ sex + age + state)
+sample_parms %>% dim
+sample_parms
 #'
+#' Assign sampling factor and probability of a yes:
+#' 
 #' We pretend that the sample is disproportionaly young among women and old among men
 #' by creating a relative sampling factor. Since the sampling factors and the response
 #' distribution don't depend on ethnicity, we don't need to take that into account at this
 #' stage. 
-#'  
-sample_parms <- tab_df(target_pop, ~ age + sex) # don't need raceethnicity
-sample_parms
 sample_parms$Freq <- NULL
 sample_parms$fac <- c(3,2,2,1,1,1,1,1,1,2,2,3)  # relative sampling factor
 sample_parms$pr <- c(4,2,1,1,1,.5,.5,1,1,1,3,4)/5  # probability of a YES
 sample_parms
 #'
-#' We merge (join) with target_pop
-#' 
-sample_parms <- merge(target_pop, sample_parms)
-sample_parms %>% info
+#' Merge into sampling data frame and assign values to remaining 'fac' and 'pr'
 #'
-#' take a sample of N = 1000 with probabilities proportional to 
+pop_agg <- merge(pop_agg, sample_parms, all.x = T)
+pop_agg %>% summary
+pop_agg$fac[is.na(pop_agg$fac)] <- 0.01
+pop_agg$pr[is.na(pop_agg$pr)] <- 0.5
+pop_agg %>% summary
+#'
+#' ## Step 2: Sample respondents
+#'
+#' Take a sample of N = 1000 with probabilities proportional to 
 #' population proportion times 'fac'
 #' 
 N <- 1000
-prob <- with(sample_parms, population * fac)
-sample_rows <- sample(nrow(sample_parms), N, replace = T, prob = prob)
-sample <- sample_parms[sample_rows,]
+pop_agg$prob <- with(pop_agg, population * fac)
+sample_rows <- sample(nrow(pop_agg), N, replace = T, prob = pop_agg$prob)
+#' Create sample data frame
+sample <- pop_agg[sample_rows,]
+sample %>% info
+sample %>% tab(~state == 'CA')
 #'
-#' Step X: Generate response
+#' ## Step 3: Generate response
 #'
 sample$y <- rbinom(nrow(sample), 1, prob = sample$pr)
 
+#'
 #' Get rid of information we would not normally have in a sample
-sample <- subset(sample, select = c(sex, age, raceethnicity, y)) # keeps all the rows, selects columns
+#'
+sample <- subset(sample, select = c(sex, age, raceethnicity, state, y)) # keeps all the rows, selects columns
 sample %>% info
 #'
-#' Explore some properties of sample
+#' ## Sampling function
+#' 
+#' We put all this together in a sampling function
 #'
+sam <- function(N = 1, 
+                pop = popagetable, # population frequency table
+                fmla = population ~ sex + age + raceethnicity + state, # aggregation formula
+                subset, # an expression that selects a subset, e.g. state == 'AK' & age > '5 to 9 years'
+                fac, # a data frame or list of data frames to assign relative sampling frequencies,
+                    # variable names are the RHS names in 'fmla' and 'fac', a numeric sampling factor
+                   # If 'fac' is a list, the factors are applied multiplicatively
+                prob) # same as fac except that prob. of a 'yes' is given in variable 'prob'. They are
+                      # combined by summing log odds
+                    # TO BE GENERALIZED!!
+{
+  # Note: reserved names: fac, prob, y 
+  # local functions
+  last <- function(x) x[length(x)]
+  na2 <- function(x, rep = 0) {
+    x[is.na(x)] <- rep
+    x
+  }
+  # sampling frame
+  sampling_frame <- tab_df(pop, fmla)
+  library(magrittr) # for pipes
+  strat_vars <- fmla %>% 
+    as.character %>% 
+    last %>% 
+    gsub(" ","",.) %>% 
+    strsplit("[*+/:]") %>% 
+    unlist
+    
+  if(!missing(subset)) { # code from 'subset.data.frame'
+    e <- substitute(subset)
+    r <- eval(e, sampling_frame, parent.frame())
+    if(!is.logical(r)) stop("'subset' must be logical")
+    sampling_frame <- sampling_frame[r & !is.na(r),]
+  } 
+  # sampling factor
+  sampling_frame$fac <-1
+  if(!missing(fac)) {
+    if(is.data.frame(fac)) fac <- list(fac)
+    fac <- lapply(fac, function(d) d[,c(intersect(names(d),strat_vars),'fac')])
+    for(dd in fac){
+      sampling_frame <- merge(sampling_frame, dd, all.x = T, by = intersect(strat_vars, names(dd)))
+      sampling_frame$fac <- sampling_frame$fac.x * na2(sampling_frame$fac.y, 1)
+      sampling_frame$fac.y <- NULL
+      sampling_frame$fac.x <- NULL
+    }
+  }
+  # probability of a 'yes'
+  logit <- function(p) log(p/(1-p))
+  sampling_frame$logit <- 0
+  if(!missing(prob)) {
+    if(is.data.frame(prob)) prob <- list(prob)
+    prob <- lapply(prob, function(d) d[,c(intersect(names(d),strat_vars),'prob')])
+    for(dd in prob){
+      dd$logit <- logit(dd$prob)
+      dd$prob <- NULL
+      sampling_frame <- merge(sampling_frame, dd, all.x = T, by = intersect(strat_vars, names(dd)))
+      sampling_frame$logit <- sampling_frame$logit.x + na2(sampling_frame$logit.y, 0)
+      sampling_frame$logit.y <- NULL
+      sampling_frame$logit.x <- NULL
+    }
+  }
+  sampling_frame$prob <- 1/(1+exp(-sampling_frame$logit))
+  
+  # select respondents
+  
+  rows <- sample(nrow(sampling_frame), N, replace = TRUE, 
+                 prob = with(sampling_frame, population * fac))
+  sample <- sampling_frame[rows,]
+  
+  # Generate response
+  
+  sample$y <- rbinom(nrow(sample), 1, prob = sample$prob)
+  attr(sample,'fmla') <- fmla
+  attr(sample,'strat_vars') <- strat_vars
+  sample
+}
+#'
+#' ### Examples
+#'
+#' A simple random sample from the population, default probability of 'yes' is 0.5 
+sam(5) 
+#' A simple random sample of women recording only age
+sam(5, fmla = population ~ sex + age, subset = sex == "Female")                
+#' A biased sample with the probability of a 'yes' depending on sex
+fac <- list(
+  data.frame(sex = c('Male','Female'), fac = c(3,2)), # with no omitted level, these are relative sampling factors
+  data.frame(age = "20 to 24 years", fac = 5)   # omitted levels are set to 1
+)
+fac
+
+prob <- data.frame(sex = 'Male', prob = .8) # the omitted level 'Female' defaults to .5
+prob
+
+sam(5, fmla = population ~ sex + age + state, fac = fac, prob = prob)  
+
+#' A similar sample limited to California and recording raceethnicity as well
+
+sam(5, fmla = population ~ sex + age + raceethnicity + state, subset = state == "CA",
+    fac = fac, prob = prob)
+      
+#' Oversampling teen males
+
+(fac <- tab_df(popagetable, ~ age + sex)) %>% info
+
+fac$Freq <- NULL
+fac$fac <- c(0,0,rep(1,12), 0,0, 10, 20, 20, 10, 5, rep(1,7))
+fac
+sam(5, fmla = population ~ sex + age, fac = fac, prob = prob)
+#'
+#' ### A larger sample: exploring some properties
+#' 
+(subset_expr <- quote(state == 'AK' & age > "18 and 19 years" & age < '65 to 74 years'))
+(target_pop <- subset(popagetable, eval(subset_expr))) %>% info
+
+
+fac <- popagetable %>% 
+  subset(eval(subset_expr)) %>% 
+  tab_df(~age + sex)
+fac$Freq <- NULL
+fac$fac <-  c(3,2,2,1,1,1,1,1,1,2,2,3)  # relative sampling factor
+fac$prob <- c(4,2,1,1,1,.5,.5,1,1,1,3,4)/5  # probability of a YES
+fac
+
+sample <- sam(1000, fmla = population ~ age + sex + state + raceethnicity,
+              subset = eval(subset_expr),
+              fac = fac,
+              prob = fac)
+sample %>% info
+#'
+#' Exploring the sample
+#' 
 sample %>% tab(~age+sex)
+sample %>% tab(~age+sex, pct = 0) %>% round(1)
+sample %>% tab(~age+sex, pct = 1) %>% round(1)
+sample %>% tab(~age+sex, pct = 2) %>% round(1)
+#'
+#' Over and undersampling
+#'
+#' Proportion in target population and sampling ratio
+#' 
+(target_prop <- target_pop %>% tab(population~age+sex, pct = 0)) %>% round(1)
+(sampling_ratio <- tab(sample, ~ age + sex, pct = 0) / target_prop) %>% round(2)
+xyplot(Freq~age , as.data.frame(sampling_ratio), groups = sex, type = 'b', 
+       ylab = 'relative sampling ratio',
+       auto.key = list(lines = T))
+#'
+#'
 #' Percent of YES responses within each group
+#'
 (100 * tab(sample, y ~ age + sex)/tab(sample, ~age + sex))  %>% round(1)
-(100 * tab_(sample, y ~ age + sex)/tab_(sample, ~age + sex))  %>% as.data.frame -> sample_as
-sample_as$pct_YES <- sample_as$Freq
-xyplot(pct_YES ~ age ,sample_as, groups = sex, type = 'l', auto.key = T)
+(100 * tab_(sample, y ~ age + sex)/tab_(sample, ~age + sex))  %>% as.data.frame(responseName="Yes") -> sample_as
+xyplot(Yes ~ age ,sample_as, groups = sex, type = 'b', auto.key = T, ylab ='Yes (%)')
 #' make plots nicer, i.e. more like ggplot2
 trellis.par.set(ggplot2like())
 lattice.options(ggplot2like.opts())
-xyplot(pct_YES ~ age ,sample_as, groups = sex, type = 'l', lwd = 2, auto.key = T)
+xyplot(Yes ~ age ,sample_as, groups = sex, type = 'b', lwd = 2, auto.key = T, ylab ='Yes (%)')
 #'
-#' ### Estimating the probability of YES   
+#' ## Estimating the probability of YES   
 #'
-sample_parms %>% head
-#' 'True' value in the population:
-sample_parms %>% with(wtd_mean(pr,population)) 
+#' 'True' value in the target population:
+fac
+fac_pop <- tab_df(target_pop, population ~ age + sex)
+fac <- merge(fac, fac_pop)
+fac %>% with(wtd_mean(prob,population)) 
 #' Estimated value from the sample without weighing
 sample %>% with(mean(y))
 #' Estimated std. error:
 sample %>% with(sd(y)/sqrt(length(y)))
 #'
+#'
 #' ## Creating weights for the sample
 #' 
-#' Weights depend on the choice of variables to create strata. Withi each stratum,
+#' Weights depend on the choice of variables to create strata. Within each stratum,
 #' we need the population count and the sample count. 
 #' 
 #' This seems easiest to do with a simple function:
@@ -232,90 +447,143 @@ ns <- function(sample, target_pop, formula) {
   # and population counts respectively.
   ret <- sample
   by <- model.frame(formula, sample)
-  # sample counts:
+  # sample counts: WWCa::capply(x, by, FUN, ...) applies the function 'FUN'  
   ret$n <- capply(ret[[1]], by, length)
   # population counts
   pop <- tab_df(target_pop, formula, weight = target_pop$population)
   pop$N <- pop$Freq
   pop$Freq <- NULL
-  ret <- merge(ret,pop)
+  ret <- merge(ret,pop, all = T)
+  fac.names <- names(pop)[sapply(pop,is.factor)]
+  for(nn in fac.names) {
+    ret[[nn]] <- factor(ret[[nn]],levels=levels(pop[[nn]]))
+    if(is.ordered(pop[[nn]])) ret[[nn]] <- ordered(ret[[nn]])
+  }
+  ret$n[is.na(ret$n)] <- 0
   ret
 }
 sample_as <- ns(sample, target_pop, ~ age + sex)
 sample_as %>% info
 #'
-#' ## Weights
+#' # Weights
 #'
-#' Horvitz-Thompson and related weights
+#' ## Horvitz-Thompson and related weights
 #'
-wts <- function(sample, maxweight = 3) {
+HTwts <- function(sample, cap = 3) {
   # sample with n and N
   ret <- sample
   ret$HT <- with(sample, N/n)
+  ret$HTcap <- pmin(ret$HT, cap)
   ret$HT_mean <- ret$HT/mean(ret$HT)
   ret$HT_med <- ret$HT/median(ret$HT)
-  ret$HT_mean_t <- pmin(ret$HT_mean, maxweight)
-  ret$HT_med_t <- pmin(ret$HT_med, maxweight)
+  ret$HT_mean_cap <- pmin(ret$HT_mean, cap)
+  ret$HT_med_cap <- pmin(ret$HT_med, cap)
   ret$none <- 1
   ret
 }
 #'
-sample_asw <- wts(sample_as)
-sample_asw %>% info
+(sample_asw <- HTwts(sample_as)) %>% info
 sample_asw %>% with(wtd_mean(y,HT))
 sample_asw %>% with(jk_wtd_mean_se(y,list(age,sex),HT))
-sample_asw %>% with(wtd_mean(y,HT_mean_t))
-sample_asw %>% with(jk_wtd_mean_se(y,list(age,sex),HT_mean_t))
+sample_asw %>% with(wtd_mean(y,HT_mean_cap))
+sample_asw %>% with(jk_wtd_mean_se(y,list(age,sex),HT_mean_cap))
 #'
 #' Using only sex for adjustment
 #' 
-sample_sw <- sample %>% ns(target_pop, ~sex) %>% wts
-sample_sw %>% with(wtd_mean(y,HT))
-sample_sw %>% with(jk_wtd_mean_se(y,list(sex),HT))
-sample_sw %>% with(wtd_mean(y,HT_mean_t))
-sample_sw %>% with(jk_wtd_mean_se(y,list(sex),HT_mean_t))
+sample_sw <- sample %>% ns(target_pop, ~sex) %>% HTwts
+sample_sw %>% with(wtd_mean(y, HT))
+sample_sw %>% with(jk_wtd_mean_se(y, list(sex), HT))
+sample_sw %>% with(wtd_mean(y, HT_mean_cap))
+sample_sw %>% with(jk_wtd_mean_se(y,list(sex),HT_mean_cap))
 #'
 #' Using only age for adjustment
 #' 
-sample_aw <- sample %>% ns(target_pop, ~age) %>% wts
+sample_aw <- sample %>% ns(target_pop, ~age) %>% HTwts
 sample_aw %>% with(wtd_mean(y,HT))
 sample_aw %>% with(jk_wtd_mean_se(y,list(age),HT))
-sample_aw %>% with(wtd_mean(y,HT_mean_t))
-sample_aw %>% with(jk_wtd_mean_se(y,list(age),HT_mean_t))
+sample_aw %>% with(wtd_mean(y,HT_mean_cap))
+sample_aw %>% with(jk_wtd_mean_se(y,list(age),HT_mean_cap))
 #'
-#' Using only age, sex and raceethnicity for adjustment
+#' Using age, sex and raceethnicity for adjustment
 #' 
-sample_asrw <- sample %>% ns(target_pop, ~age+sex+raceethnicity) %>% wts
+sample_asrw <- sample %>% ns(target_pop, ~age+sex+raceethnicity) %>% HTwts
 sample_asrw %>% with(wtd_mean(y,HT))
 sample_asrw %>% with(jk_wtd_mean_se(y,list(age,sex,raceethnicity),HT))
-sample_asrw %>% with(wtd_mean(y,HT_mean_t))
-sample_asrw %>% with(jk_wtd_mean_se(y,list(age,sex,raceethnicity),HT_mean_t))
-#'
+sample_asrw %>% with(wtd_mean(y,HT_mean_cap))
+sample_asrw %>% with(jk_wtd_mean_se(y, list(age, sex, raceethnicity), HT_mean_cap))
+sample_asrw %>% with(wtd_mean(y, HT_med_cap, na.rm = T))
+sample_asrw %>% with(jk_wtd_means(y, list(age, sex, raceethnicity), HT_med_cap, na.rm = T))
+sample_asrw %>% with(jk_wtd_mean_se(y, list(age, sex, raceethnicity), HT_med_cap, na.rm = T))
 sample_asrw %>% info
-sample_asrw %>% xyplot(HT_mean~HT_mean_t,.)
-
 #'
-#'  # Simulating sample
+#' # Simulating samples
+#' 
+#' 100 sample size of 100
 #'
-target_pop <- subset(popagetable, state == 'AK' & age > "18 and 19 years" & age < '65 to 74 years')
-target_pop <- droplevels(target_pop)
-target_pop %>% info
+#' 
+
+(subset_expr <- quote(state == 'AK' & age > "18 and 19 years" & age < '65 to 74 years'))
+(target_pop <- subset(popagetable, eval(subset_expr))) %>% info
+
+fac <- popagetable %>% 
+  subset(eval(subset_expr)) %>% 
+  tab_df(~age + sex)
+fac$Freq <- NULL
+fac$fac <-  c(3,2,2,1,1,1,1,1,1,2,2,3)  # relative sampling factor
+fac$prob <- c(4,2,1,1,1,.5,.5,1,1,1,3,4)/5  # probability of a YES
+fac
+
+sams <- lapply(1:100, function(i) {
+  sam(100, fmla = population ~ age + sex + state + raceethnicity,
+      subset = eval(subset_expr),
+      fac = fac,
+      prob = fac)
+})
+
+sams_as <- lapply(sams, function(s) HTwts(ns(s, target_pop, ~ age + sex)) )
+sams_a <- lapply(sams, function(s) HTwts(ns(s, target_pop, ~ age)) )
+sams_s <- lapply(sams, function(s) HTwts(ns(s, target_pop, ~ sex)) )
+sams_asr <- lapply(sams, function(s) HTwts(ns(s, target_pop, ~ age + sex + raceethnicity)) )
+
+est <- function(s, pop, fmla) {
+  s <- ns(s, pop, fmla) %>% HTwts
+  clist <- model.frame(fmla,s)
+  with(s, list(est_HT = wtd_mean(y, HT, na.rm = TRUE), 
+              se_HT = jk_wtd_mean_se(y, clist, HT, na.rm = TRUE),
+              est_HTc = wtd_mean(y, HT_med_cap, na.rm = TRUE),
+              se_HTc = jk_wtd_mean_se(y, clist, HT_med_cap, na.rm = TRUE)))
+}
+              
+sam_as_est <- lapply(sams_as, est, target_pop, ~age + sex )
+sam_a_est <- lapply(sams_a, est, target_pop, ~age )
+sam_s_est <- lapply(sams_s, est, target_pop, ~sex)
+sam_asr_est <- lapply(sams_asr, est, target_pop, ~age + sex + raceethnicity)
 
 
-formula <- ~ age + sex
-sample_parms <- tab_df(target_pop, formula) # don't need raceethnicity
-sample_parms
-sample_parms$Freq <- NULL
-sample_parms$fac <- c(3,2,2,1,1,1,1,1,1,2,2,3)  # relative sampling factor
-sample_parms$pr <- c(4,2,1,1,1,.5,.5,1,1,1,3,4)/5  # probability of a YES
-sample_parms
-pop_sample_parms <- merge(sample_parms, target_pop)
-pop_sample_parms  %>% info
 
+segplot(est_se ~ I(est_mean + 2*est_se) + I(est_mean - 2*est_se) | wt,
+        data = zw,
+        horizontal = FALSE,
+        draw.bands = FALSE, centers = est_mean, 
+        segments.fun = panel.arrows, ends = "both", 
+        angle = 90, length = 1, unit = "mm")+ layer(panel.abline(h=true.mean))
+
+                  
+
+
+#######################################################################################
+#######################################################################################
+#######################################################################################
 #'
 knitr::knit_exit()
 #'
 
+
+sample <- sam(1000, fmla = population ~ age + sex + state + raceethnicity,
+              subset = eval(subset_expr),
+              fac = fac,
+              prob = fac)
+sample %>% info
 
 N <- 1000
 

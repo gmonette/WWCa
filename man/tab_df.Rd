@@ -23,6 +23,6 @@ left-hand side, cell frequencies are shown.
 
 \code{tab_df(data, fmla)} is similar in effect to \code{as.data.frame(tab_(data, fmla))} except
 that the former uses the name in the LHS of \code{fmla} as a variable name for counts while the latter
-uses 'Freq'.
+uses 'Freq'. Also, \code{tab_df} preserved ordered factors.
 }
 

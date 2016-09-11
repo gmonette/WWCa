@@ -5,7 +5,7 @@
 \title{Post-stratification jacknife estimate of SE of weighted mean}
 \usage{
 jk_wtd_mean_se(x, by = rep(1, length(x)), w = rep(1, length(x)),
-  FUN = wtd_mean)
+  FUN = wtd_mean, na.rm = FALSE)
 }
 \arguments{
 \item{x}{numerical vector}

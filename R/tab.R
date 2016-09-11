@@ -16,7 +16,13 @@
 ###
 ###    Incorporate testing from package rdc
 ####
-
+disp <- function(x, head = deparse(substitute(x)))
+{
+  cat("::: ", head, " :::\n")
+  print(x)
+  cat("======================\n")
+  invisible(x)
+}
 # Changes:
 # 2014:
 #   October 16: added tab.table, tab.matrix, tab.array
@@ -71,12 +77,15 @@ dropLast <- function( mat ,drop = FALSE, keep = NULL) {
 dropLastTotal <- function (mat, names_to_drop = "Total", drop = FALSE) {
   cl <- class(mat)
   last <- function(x) x[length(x)]
-  cutlast <- function(x) x[-length(x)]
+  cutlast <- function(x) if(length(x)>0) x[-length(x)] else x
   ind.last <- dim(mat)
   ns <- dimnames(mat)
+  # disp(ns)
   keep <- lapply(ind.last, seq_len)
   # disp(keep)
   for(i in seq_along(keep)) {
+    # disp(i)
+    # disp(keep[[i]])
     if( last(ns[[i]]) %in% names_to_drop) keep[[i]] <- cutlast(keep[[i]])
   }
   # disp(keep)
@@ -469,16 +478,18 @@ Tab <- tab_    # future?
 #' 
 #' \code{tab_df(data, fmla)} is similar in effect to \code{as.data.frame(tab_(data, fmla))} except
 #' that the former uses the name in the LHS of \code{fmla} as a variable name for counts while the latter
-#' uses 'Freq'.
+#' uses 'Freq'. Also, \code{tab_df} preserved ordered factors.
 #'  
 #' @export
 tab_df <- function(data, fmla, ...){
-  if(missing(fmla)) as.data.frame( tab_(data, ...))
+  if(missing(fmla)) ret <- as.data.frame( tab_(data, ...))
   else if (length(fmla) >2 ) {
     nam <- as.character(fmla)[2]
     ret <- as.data.frame(tab_(data, fmla, ...))
     ret[[nam]] <- ret$Freq
     ret$Freq <- NULL
-    ret
-  } else as.data.frame(tab_(data, fmla, ...))
+  } else ret <- as.data.frame(tab_(data, fmla, ...))
+  nams.ord <- names(data)[sapply(data,is.ordered)]
+  for( nn in nams.ord) if(!is.null(ret[[nn]])) ret[[nn]] <- as.ordered(ret[[nn]])
+  ret
 }

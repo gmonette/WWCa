@@ -97,13 +97,19 @@ NULL
 #' 
 #' @param x numerical vector
 #' @param w vector of weights replicated to have same length as \code{x}
+#' @param na.rm if TRUE, drop units for which x is NA. Default: FALSE.
 #' @family Post-stratification survey functions
 #' @seealso \code{\link{wtd_mean}} for weighted means, \code{link{lin_comb}} for linear
 #'      combinations, \code{\link{jk_wtd_mean_se}} for a jacknife estimate of the SE of a weighted mean
 #'      and \code{\link{jk_lin_comb_se}} for a jacknife estimate of the SE of a linear combination.
 #' @export
-wtd_mean <- function(x, w) {
+wtd_mean <- function(x, w, na.rm = FALSE) {
   w <- rep(w, length.out = length(x))
+  if(na.rm) {
+    drop <- is.na(x) 
+    x <- x[!drop]
+    w <- w[!drop]
+  }
   sum(x*w) / sum(w)
 }
 #' Post-stratification jacknife estimates of standard error
@@ -121,7 +127,7 @@ wtd_mean <- function(x, w) {
 #'      combinations, \code{\link{jk_wtd_mean_se}} for a jacknife estimate of the SE of a weighted mean
 #'      and \code{\link{jk_lin_comb_se}} for a jacknife estimate of the SE of a linear combination.
 #' @export
-jk_wtd_means <- function(x, by, w, check = TRUE, FUN = wtd_mean){
+jk_wtd_means <- function(x, by, w, check = TRUE, FUN = wtd_mean, ...){
   # Value: vector of 'drop-one' estimates for jacknife estimator of SE
   #
   # x: response variable, a numeric vector
@@ -140,7 +146,7 @@ jk_wtd_means <- function(x, by, w, check = TRUE, FUN = wtd_mean){
   wtd_mean_drop_i <- function(i) {
     ns_drop <- capply(x[-i], by[-i], length)
     w_drop <- w[-i] * ns[-i] / ns_drop
-    FUN(x[-i], w_drop)
+    FUN(x[-i], w_drop, ...)
   }
   sapply(seq_along(x), wtd_mean_drop_i)
 }
@@ -365,7 +371,7 @@ jk_wtd_means <- function(x, by, w, check = TRUE, FUN = wtd_mean){
 #'      combinations, \code{\link{jk_wtd_mean_se}} for a jacknife estimate of the SE of a weighted mean
 #'      and \code{\link{jk_lin_comb_se}} for a jacknife estimate of the SE of a linear combination.
 #' @export
-jk_wtd_mean_se <- function(x, by = rep(1, length(x)), w = rep(1, length(x)), FUN = wtd_mean) {
+jk_wtd_mean_se <- function(x, by = rep(1, length(x)), w = rep(1, length(x)), FUN = wtd_mean, na.rm = FALSE) {
   # Value: jacknife estimator of the standard error of a weighted mean
   # using post-stratification
   #
@@ -373,10 +379,11 @@ jk_wtd_mean_se <- function(x, by = rep(1, length(x)), w = rep(1, length(x)), FUN
   # by: vector or list of vectors defining strata
   # w: numeric vector of sampling weights constant within each stratum
   #
-  theta_hat <- FUN(x, w)
-  theta_hat_i <- jk_wtd_means(x, by, w, FUN = FUN)
+  theta_hat <- FUN(x, w, na.rm = na.rm)
+  theta_hat_i <- jk_wtd_means(x, by, w, FUN = FUN, na.rm = na.rm)
   ns <- capply(x, by, length)
-  sqrt(sum((theta_hat_i - theta_hat)^2 * (ns-1) / ns))
+  drop <- is.na(x)
+  sqrt(sum((theta_hat_i[!drop] - theta_hat)^2 * (ns[!drop]-1) / ns[!drop]))
 }
 #' 
 #'

@@ -4,12 +4,14 @@
 \alias{wtd_mean}
 \title{Weighted mean}
 \usage{
-wtd_mean(x, w)
+wtd_mean(x, w, na.rm = FALSE)
 }
 \arguments{
 \item{x}{numerical vector}
 
 \item{w}{vector of weights replicated to have same length as \code{x}}
+
+\item{na.rm}{if TRUE, drop units for which x is NA. Default: FALSE.}
 }
 \description{
 Weighted mean
