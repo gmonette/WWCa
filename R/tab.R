@@ -489,7 +489,10 @@ tab_df <- function(data, fmla, ...){
     ret[[nam]] <- ret$Freq
     ret$Freq <- NULL
   } else ret <- as.data.frame(tab_(data, fmla, ...))
-  nams.ord <- names(data)[sapply(data,is.ordered)]
-  for( nn in nams.ord) if(!is.null(ret[[nn]])) ret[[nn]] <- as.ordered(ret[[nn]])
+  nams.fac <- intersect(names(data)[sapply(data,is.factor)], names(ret))
+  for( nn in nams.fac) {
+    if(is.ordered(data[[nn]])) ret[[nn]] <- ordered(ret[[nn]],levels = levels(data[[nn]]))
+    else ret[[nn]] <- factor(ret[[nn]], levels = levels(data[[nn]]))
+  }
   ret
 }

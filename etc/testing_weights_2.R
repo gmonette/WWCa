@@ -1,5 +1,6 @@
 #' ---
 #' title: "Weighting for online surveys"
+#' author: "Georges Monette"
 #' date: "`r Sys.Date()`"
 #' output: 
 #'  html_document:
@@ -20,19 +21,20 @@ library(lattice)
 library(latticeExtra)
 library(knitr)
 opts_chunk$set(comment=NA)
+opts_knit$set(progress = TRUE, width = 90)
 #' 
 #' # Introduction
 #' 
-#' This document illustrates the use of a few tools in a R package called [WWCa](https://github.com/gmonette/WWCa)
-#' that might be useful to analyze and weight
-#' online surveys.
+#' This document gives examples using of a few tools for survey analysis in an R package called 
+#' [WWCa](https://github.com/gmonette/WWCa). The package borrows from and is inspired by the 
+#' [WWC](https://github.com/heathermkrause/WWC).
 #' 
 #' Currently, the package contains:
 #' 
 #' 1. Two 'population' data frames with census counts by county for the U.S. and Puerto Rico. One data frame has
 #'    counts for age, sex and raceethnicity by county and the second (to come) has counts for age,
-#'    sex and education by county. Q: Is is possible to get a sex by age by education by raceethnicity 
-#'    data frame? These data frames were constructed from the 'acsagetable' and 'acsedutable' 
+#'    sex and education by county. __Q: Is is possible to get a sex by age by education by raceethnicity 
+#'    data frame?__ These data frames were constructed from the 'acsagetable' and 'acsedutable' 
 #'    data frames in the [WWC package](https://github.com/heathermkrause/WWC).
 #' 1. A function 'sam' to create simulated samples from the population data frames. The function 
 #'    accepts a sampling factor to allow over- or undersampling in arbitrary strata. Currently, the 
@@ -43,22 +45,18 @@ opts_chunk$set(comment=NA)
 #'    Other functions include 'capply', a function in the 'apply' family that allows function to
 #'    operate within strata. 
 #' 3. Functions for weighting and calculating weighted and unweighted estimates of population parameters.
+#'    All estimates and standard errors are computed with the function 'est'.  Other estimators can be
+#'    added to this function.
 #' 
+#' ## Overview of estimation functions
+#' 
+#' The basis of survey weights are population and sample counts within strata and the ratio of these two
+#' counts, 
+#' the Horvitz-Thompson weights.  The 'wts' function computes these quantities.
+#'  
 #' The structure of the functions should make it easy to add additional weight fitting methods and 
 #' to identify nested hierarchies of subpopulations for which a sample can provide estimates with
 #' different levels of reliability.
-#' 
-#' ## Overview of functions
-#'
-#' The main tools are 'tab' and 'tab_df' to create tables and data frames with frequencies by strata
-#' for survey data and population count tables. 
-#' 
-#' The basis of survey weights are population sample counts within strata and their ratio, 
-#' the Horvitz-Thompson weights.  The 'wts' function computes these quantities, taking as
-#' arguments:
-#'  
-#' 1. two data frames, one with survey results and one with population frequencies, 
-#' 2. a stratification formula to identify stratification variables.
 #' 
 #' The 'wtd_mean' function estimates a weighted mean and a companion function 'jk_wtd_mean_se' estimates
 #' a jacknife estimate of its standard error.  The functions 'lin_comb' and 'jk_lin_comb_se' provide
@@ -66,13 +64,13 @@ opts_chunk$set(comment=NA)
 #' 
 #' ## In progress
 #' 
-#' Methods to calculate and apply survey weights are being extended so they can include raking and generalized 
+#' Methods to calculate and apply survey weights will be extended so they can include raking and generalized 
 #' regression.  
 #' 
 #' Different weights will allow the identification of different hierarchies of sub-populations for which
 #' the sample estimates have greater or lesser degree of reliability.   
 #' 
-#' # Exploring tools
+#' ## Tools to view R objects
 #' 
 #' Define a flexible method to look at data frames
 #' 
@@ -518,114 +516,126 @@ sample_asrw %>% info
 #'
 #' # Simulating samples
 #' 
-#' 100 sample size of 100
-#'
+#' We draw 100 samples of size 100, calculate the estimated proportion and its standard error
+#' using different stratifications and see the empirical coverage of nominal 
+#' approximate 95% confidence intervals.
 #' 
 
+#' Subsetting expression and sampling frame:
 (subset_expr <- quote(state == 'AK' & age > "18 and 19 years" & age < '65 to 74 years'))
-(target_pop <- subset(popagetable, eval(subset_expr))) %>% info
+(sampling_frame <- subset(popagetable, eval(subset_expr))) %>% info
 
 fac <- popagetable %>% 
   subset(eval(subset_expr)) %>% 
   tab_df(~age + sex)
-fac$Freq <- NULL
 fac$fac <-  c(3,2,2,1,1,1,1,1,1,2,2,3)  # relative sampling factor
 fac$prob <- c(4,2,1,1,1,.5,.5,1,1,1,3,4)/5  # probability of a YES
-fac
+fac$age %>% levels
 
-sams <- lapply(1:100, function(i) {
-  sam(100, fmla = population ~ age + sex + state + raceethnicity,
+system.time(
+samples <- lapply(1:100, function(i) {
+  sam(100, sampling_frame, fmla = population ~ age + sex + state + raceethnicity,
       subset = eval(subset_expr),
       fac = fac,
       prob = fac)
 })
-
-sams_as <- lapply(sams, function(s) HTwts(ns(s, target_pop, ~ age + sex)) )
-sams_a <- lapply(sams, function(s) HTwts(ns(s, target_pop, ~ age)) )
-sams_s <- lapply(sams, function(s) HTwts(ns(s, target_pop, ~ sex)) )
-sams_asr <- lapply(sams, function(s) HTwts(ns(s, target_pop, ~ age + sex + raceethnicity)) )
-
+)
+#'
+#' Generate weights for different stratifications
+#'
+samples_w <- list(
+  "~ age + sex" = lapply(samples, function(s) HTwts(ns(s, target_pop, ~ age + sex)) ),
+  "~ age" = lapply(samples, function(s) HTwts(ns(s, target_pop, ~ age)) ),
+  "~ sex" = lapply(samples, function(s) HTwts(ns(s, target_pop, ~ sex)) ),
+  "~ age + sex + raceethnicity" = lapply(samples, function(s) HTwts(ns(s, target_pop, ~ age + sex + raceethnicity)) )
+)
+#'
+#' Estimation functions using two types of weights
+#'
 est <- function(s, pop, fmla) {
   s <- ns(s, pop, fmla) %>% HTwts
   clist <- model.frame(fmla,s)
-  with(s, list(est_HT = wtd_mean(y, HT, na.rm = TRUE), 
-              se_HT = jk_wtd_mean_se(y, clist, HT, na.rm = TRUE),
-              est_HTc = wtd_mean(y, HT_med_cap, na.rm = TRUE),
-              se_HTc = jk_wtd_mean_se(y, clist, HT_med_cap, na.rm = TRUE)))
+  with(s, list(
+    est_raw = wtd_mean(y, none, na.rm = TRUE),
+    se_raw = jk_wtd_mean_se(y, clist, none, na.rm = TRUE),
+    est_HT = wtd_mean(y, HT, na.rm = TRUE), 
+    se_HT = jk_wtd_mean_se(y, clist, HT, na.rm = TRUE),
+    est_HTc = wtd_mean(y, HT_med_cap, na.rm = TRUE),
+    se_HTc = jk_wtd_mean_se(y, clist, HT_med_cap, na.rm = TRUE)))
 }
-              
-sam_as_est <- lapply(sams_as, est, target_pop, ~age + sex )
-sam_a_est <- lapply(sams_a, est, target_pop, ~age )
-sam_s_est <- lapply(sams_s, est, target_pop, ~sex)
-sam_asr_est <- lapply(sams_asr, est, target_pop, ~age + sex + raceethnicity)
-
-
-
-segplot(est_se ~ I(est_mean + 2*est_se) + I(est_mean - 2*est_se) | wt,
-        data = zw,
-        horizontal = FALSE,
-        draw.bands = FALSE, centers = est_mean, 
-        segments.fun = panel.arrows, ends = "both", 
-        angle = 90, length = 1, unit = "mm")+ layer(panel.abline(h=true.mean))
-
-                  
-
-
-#######################################################################################
-#######################################################################################
-#######################################################################################
 #'
-knitr::knit_exit()
+#' ### Estimation
 #'
-
-
-sample <- sam(1000, fmla = population ~ age + sex + state + raceethnicity,
-              subset = eval(subset_expr),
-              fac = fac,
-              prob = fac)
-sample %>% info
-
-N <- 1000
-
-sim <- function(pop_sample_parms, N, formula, fmlist = list(formula)){
-  prob <- with(pop_sample_parms, population * fac)
-  sample_rows <- sample(nrow(pop_sample_parms), N, replace = T, prob = prob)
-  sample <- pop_sample_parms[sample_rows,]
-  # Generate response
-  sample$y <- rbinom(nrow(sample), 1, prob = sample$pr)
-  wts.types <- c('none','HT','HT_mean_t','HT_med_t')
-  fnames <- sapply(fmlist, function(x) as.character(x)[2])
-  ret <- array(dim = c(length(fnames), length(wts.types), 2))
-  dimnames(ret) <- list(adj = fnames, wt = wts.types, stat = c('mean','se'))
-  for(i in seq_along(fmlist)){
-    tmp <- sample %>% ns(pop_sample_parms, fmlist[[i]]) %>% wts
-    for(j in seq_along(wts.types)){
-      ret[i,j,1] <- wtd_mean(tmp$y, tmp[[wts.types[j]]])
-      ret[i,j,2] <- jk_wtd_mean_se(tmp$y, model.frame(fmlist[[i]],tmp), tmp[[wts.types[j]]])
-    }
-  }
-  ret
-}
-
+#' The calculation of jacknife estimates takes more time than generating samples
+#'
+#+ cache=TRUE 
 system.time(
-zz <-replicate(100, sim(pop_sample_parms, N, formula))
+estimates <- lapply(seq_along(samples_w), function(i)
+  lapply(samples_w[[i]], est, sampling_frame, formula(names(samples_w)[[i]])))
 )
-z <- zz  %>% as.table %>% as.data.frame
-info(z)
-head(z,20)
-z$est <- z$Freq
-z$Freq <- NULL
-zw <- with(z,towide(z, c('adj','wt','Var4'), timevar = 'stat' ))
-head(zw)
-true.mean <- with(pop_sample_parms, wtd_mean(pr,population))
-xyplot(est_mean ~ est_se|wt, zw )+ layer(panel.abline(h=true.mean))
-dim(zz)
 
-segplot(est_se ~ I(est_mean + 2*est_se) + I(est_mean - 2*est_se) | wt,
-                data = zw,
+estimates_df <- expand.grid(stat = c('est','se'), weight = c('raw','HT','HTc'), 
+                            sample_num = 1:length(estimates[[1]]),
+                            stratification = names(samples_w))
+estimates_df$val <- unlist(estimates)
+
+estimates_df %>% head(10)
+estimates_df$id <- rep(1:(nrow(estimates_df)/2),each = 2)
+estimates_df <- towide(estimates_df, id = 'id', time = 'stat')
+head(estimates_df)
+names(estimates_df) <- sub("val_", "", names(estimates_df))
+#'
+#' 
+#'   
+
+true.mean <- with(merge(sampling_frame,fac), wtd_mean(prob, population ))
+estimates_df$t <- with(estimates_df, (est - true.mean)/se)
+estimates_df$cover <- c('miss','cover')[with(estimates_df, abs(t) < 2)+1]
+head(estimates_df)
+#'
+#' ### Raw (unweighted estimates)
+#'
+#'
+z <- subset(estimates_df, weight == 'raw')
+
+segplot(jitter(se) ~ I(est + 2*se) + I(est - 2*se) | stratification+cover,
+        data = z,
+        main = 'Unweighted estimates',
+        ylab = '~95% confidence interval',
+        xlab = 'estimated standard error',
         horizontal = FALSE,
-                 draw.bands = FALSE, centers = est_mean, 
-                 segments.fun = panel.arrows, ends = "both", 
-                 angle = 90, length = 1, unit = "mm")+ layer(panel.abline(h=true.mean))
+        draw.bands = FALSE, centers = est, groups = cover,
+        segments.fun = panel.arrows, ends = "both", auto.key = T,
+        angle = 90, length = 1, unit = "mm")+ layer(panel.abline(h=true.mean))  
+tab(z, ~ stratification + cover, pct = 1)
+#'
+#' ### Horvitz-Thompson weights
+#'
+#'
+z <- subset(estimates_df, weight == 'HT')
 
+segplot(jitter(se) ~ I(est + 2*se) + I(est - 2*se) | stratification*cover,
+        data = z,
+        main = 'Horvitz-Thompson weights',
+        ylab = '~95% confidence interval',
+        xlab = 'estimated standard error',
+        horizontal = FALSE,
+        draw.bands = FALSE, centers = est, groups = cover,
+        segments.fun = panel.arrows, ends = "both", auto.key = T,
+        angle = 90, length = 1, unit = "mm")+ layer(panel.abline(h=true.mean))
+tab(z, ~ stratification + cover, pct = 1)
+#'
+#' ### Truncated Horvitz-Thompson weights
+#'
+z <- subset(estimates_df, weight == 'HTc')
 
+segplot(jitter(se) ~ I(est + 2*se) + I(est - 2*se) | stratification*cover,
+        data = z,
+        ylab = '~95% confidence interval',
+        xlab = 'estimated standard error',
+        main = 'Truncated Horvitz-Thompson weights',
+        horizontal = FALSE,
+        draw.bands = FALSE, centers = est, groups = cover,
+        segments.fun = panel.arrows, ends = "both", auto.key = T,
+        angle = 90, length = 1, unit = "mm")+ layer(panel.abline(h=true.mean))
+tab(z, ~ stratification + cover, pct = 1)
