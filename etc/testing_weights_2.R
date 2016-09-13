@@ -62,7 +62,9 @@ opts_knit$set(progress = TRUE, width = 90)
 #' a jacknife estimate of its standard error.  The functions 'lin_comb' and 'jk_lin_comb_se' provide
 #' corresponding estimates for linear combinations. 
 #' 
-#' ## In progress
+#' ## To Do 
+#' 
+#' Explore sample size: the simulations below use a sample size of 100.
 #' 
 #' Methods to calculate and apply survey weights will be extended so they can include raking and generalized 
 #' regression.  
