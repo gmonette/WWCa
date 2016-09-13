@@ -447,4 +447,197 @@ function (lhs, rhs)
     }
   }
 }
-
+#' Sample from a sampling frame
+#' 
+#' Generate a probability sample from a sampling frame
+#'   
+#' \code{sam} takes a sample size, a 'population' data frame, a formula specifying the count variable and 
+#' stratification variable(s), an optional expression to select a subset of the 
+#' population, relative sampling factor and the probability parameter for
+#' a binomial response. It generates a sample based on these parameters.
+#' 
+#' @param N sample size (default: 1)
+#' @param pop a data frame giving frequencies in each stratum defined by a combination of
+#'        variables. The stratification can be finer than the stratification given in \code{fmla} (Default: \code{popagetable})
+#' @param fmla a formula of the form \code{count ~ a + ... + c} where \code{count} is a variable in
+#'        \code{pop} giving the population count in each row of \code{pop} and the right hand side 
+#'        of the formula identifies the variables used to aggregate \code{pop} to form a sampling frame
+#'        (Default: \code{population ~ sex + age + raceethnicity + state}). The default aggregates over
+#'        counties in the default value of \code{pop}
+#' @param subset an expression that selects a subset, e.g. state == 'AK' & age > '5 to 9 years' (Default: no subsetting)
+#' @param fac a data frame or a list of data frames whose variables include some subset of variables in the
+#'        right hand side of \code{fmla} and a variable named \code{fac} giving relative sampling factors
+#'        for each combination of values of the stratification variables.  Omitted combinations of variables get
+#'        a default relative sampling factor of 1. If \code{fac} is a list, the relative sampling factors
+#'        from each element are multiplied.
+#' @param prob a data frame or a list of data frames similar to \code{fac}, except that a variable named
+#'        \code{prob} is used to specify the binomial probability of a '1' in each stratum of respondents.
+#'        If \code{prob} is a list, the probabilities from each data frame are combined by adding their
+#'        logits.
+#' @export      
+sam <- function(N = 1, 
+                pop = popagetable, # population frequency table
+                fmla = population ~ sex + age + raceethnicity + state, # aggregation formula
+                subset, # an expression that selects a subset, e.g. state == 'AK' & age > '5 to 9 years'
+                fac, # a data frame or list of data frames to assign relative sampling frequencies,
+                # variable names are the RHS names in 'fmla' and 'fac', a numeric sampling factor
+                # If 'fac' is a list, the factors are applied multiplicatively
+                prob) # same as fac except that prob. of a 'yes' is given in variable 'prob'. They are
+  # combined by summing log odds
+  # TO BE GENERALIZED!!
+{
+  # Note: reserved names: fac, prob, y 
+  # local functions
+  last <- function(x) x[length(x)]
+  na2 <- function(x, rep = 0) {
+    x[is.na(x)] <- rep
+    x
+  }
+  # sampling frame
+  sampling_frame <- tab_df(pop, fmla)
+  library(magrittr) # for pipes
+  strat_vars <- fmla %>% 
+    as.character %>% 
+    last %>% 
+    gsub(" ","",.) %>% 
+    strsplit("[*+/:]") %>% 
+    unlist
+  
+  if(!missing(subset)) { # code from 'subset.data.frame'
+    e <- substitute(subset)
+    r <- eval(e, sampling_frame, parent.frame())
+    if(!is.logical(r)) stop("'subset' must be logical")
+    sampling_frame <- sampling_frame[r & !is.na(r),]
+  } 
+  # sampling factor
+  sampling_frame$fac <-1
+  if(!missing(fac)) {
+    if(is.data.frame(fac)) fac <- list(fac)
+    fac <- lapply(fac, function(d) d[,c(intersect(names(d),strat_vars),'fac')])
+    for(dd in fac){
+      sampling_frame <- merge(sampling_frame, dd, all.x = T, by = intersect(strat_vars, names(dd)))
+      sampling_frame$fac <- sampling_frame$fac.x * na2(sampling_frame$fac.y, 1)
+      sampling_frame$fac.y <- NULL
+      sampling_frame$fac.x <- NULL
+    }
+  }
+  # probability of a 'yes'
+  logit <- function(p) log(p/(1-p))
+  sampling_frame$logit <- 0
+  if(!missing(prob)) {
+    if(is.data.frame(prob)) prob <- list(prob)
+    prob <- lapply(prob, function(d) d[,c(intersect(names(d),strat_vars),'prob')])
+    for(dd in prob){
+      dd$logit <- logit(dd$prob)
+      dd$prob <- NULL
+      sampling_frame <- merge(sampling_frame, dd, all.x = T, by = intersect(strat_vars, names(dd)))
+      sampling_frame$logit <- sampling_frame$logit.x + na2(sampling_frame$logit.y, 0)
+      sampling_frame$logit.y <- NULL
+      sampling_frame$logit.x <- NULL
+    }
+  }
+  sampling_frame$prob <- 1/(1+exp(-sampling_frame$logit))
+  
+  # select respondents
+  
+  rows <- sample(nrow(sampling_frame), N, replace = TRUE, 
+                 prob = with(sampling_frame, population * fac))
+  sample <- sampling_frame[rows,]
+  
+  # Generate response
+  
+  sample$y <- rbinom(nrow(sample), 1, prob = sample$prob)
+  attr(sample,'fmla') <- fmla
+  attr(sample,'strat_vars') <- strat_vars
+  sample
+}
+#' Sample and population strata counts
+#'
+#' Calculate counts for the stratum for each sampled unit
+#' 
+#' @param sample a data frame including stratification variables
+#' @param target_pop a data frame with stratification variables and a variable named 'population' 
+#'        that contains population counts for each row. The data frame can include other stratification 
+#'        variables than those in \code{fmla} and counts will be aggregated over these variables
+#' @param fmla a one-sided formula of the form \code{~a + b + c ...} where 'a', 'b', 'c', ... are 
+#'        stratification variables in both \code{sample} and in \code{target_pop}
+#'        
+#' @return the \code{sample} data frame with two additional variables 'n', 'N' giving the stratum
+#'        counts in the sample and in the population, respectively. If some strata combinations are
+#'        missing in the sample, a row for each missing combination is added with n equal to 0 and 
+#'        N equal to the count for that stratum in the population
+#'
+#' @export
+ns <- function(sample, target_pop, formula) {
+  # The sample and the target_pop data frames 
+  # must include the variables used in the formula of the
+  # form, e.g. ~ sex + age.
+  #
+  # The variable 'population' is assumed to give 
+  # population counts in each row of 'target_pop'
+  # 
+  # The function returns a data frame like 'sample'
+  # with two added variables: n and N for the sample
+  # and population counts respectively.
+  ret <- sample
+  by <- model.frame(formula, sample)
+  # sample counts: WWCa::capply(x, by, FUN, ...) applies the function 'FUN'  
+  ret$n <- capply(ret[[1]], by, length)
+  # population counts
+  pop <- tab_df(target_pop, formula, weight = target_pop$population)
+  pop$N <- pop$Freq
+  pop$Freq <- NULL
+  ret <- merge(ret,pop, all = T)
+  fac.names <- names(pop)[sapply(pop,is.factor)]
+  for(nn in fac.names) {
+    ret[[nn]] <- factor(ret[[nn]],levels=levels(pop[[nn]]))
+    if(is.ordered(pop[[nn]])) ret[[nn]] <- ordered(ret[[nn]])
+  }
+  ret$n[is.na(ret$n)] <- 0
+  ret
+}
+#' Horvitz-Thompson and related weights
+#'
+#' Calculates sample weights based on the sample and population count variables calculated by
+#' \code{\link{ns}}.
+#' 
+#' @param sample a sample data frame with sample and population stratum counts given by the
+#'        variables 'n' and 'N' respectively.
+#' @param cap (default 3) a maximum for truncated median normed Horvitz-Thompson weights.
+#' @param \dots other arguments for future weight functions
+#' @export     
+HTwts <- function(sample, cap = 3, ...) {
+  # sample with n and N
+  ret <- sample
+  ret$HT <- with(sample, N/n)
+  ret$HTcap <- pmin(ret$HT, cap)
+  ret$HT_mean <- ret$HT/mean(ret$HT)
+  ret$HT_med <- ret$HT/median(ret$HT)
+  ret$HT_mean_cap <- pmin(ret$HT_mean, cap)
+  ret$HT_med_cap <- pmin(ret$HT_med, cap)
+  ret$none <- 1
+  ret
+}
+#' Estimates and SEs from a sample
+#' 
+#' Use \code{\link{ns}}, \code{\link{HTwts}} and other functions to compute estimated parameters
+#' and SEs with different algorithms
+#' 
+#' @param s a sample data frame
+#' @param pop a population data frame
+#' @param fmla a formula of the form \code{population ~ a + b + c} giving a variable with population 
+#'        counts in \code{pop} and stratification variables.
+#' @param \dots other arguments passed to \code{\link{HTwts}}
+#' @return a list with parameter estimates and standard errors
+#' @export
+est <- function(s, pop, fmla, ...) {
+  s <- HTwts(ns(s, pop, fmla),...)
+  clist <- model.frame(fmla,s)
+  with(s, list(
+    est_raw = wtd_mean(y, none, na.rm = TRUE),
+    se_raw = jk_wtd_mean_se(y, clist, none, na.rm = TRUE),
+    est_HT = wtd_mean(y, HT, na.rm = TRUE), 
+    se_HT = jk_wtd_mean_se(y, clist, HT, na.rm = TRUE),
+    est_HTc = wtd_mean(y, HT_med_cap, na.rm = TRUE),
+    se_HTc = jk_wtd_mean_se(y, clist, HT_med_cap, na.rm = TRUE)))
+}
